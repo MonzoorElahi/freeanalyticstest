@@ -282,7 +282,7 @@ export default function LoginForm() {
         </div>
 
         <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-4">
-          Powered by WooCommerce REST API
+          Made by Monzoor
         </p>
       </div>
     </div>
