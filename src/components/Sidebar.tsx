@@ -10,6 +10,8 @@ import {
   LogOut,
   Store,
   Settings,
+  Mail,
+  Receipt,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -32,6 +34,8 @@ export default function Sidebar({ storeUrl }: SidebarProps) {
     { href: "/dashboard/orders", icon: ShoppingCart, label: "Orders" },
     { href: "/dashboard/customers", icon: Users, label: "Customers" },
     { href: "/dashboard/products", icon: Package, label: "Products" },
+    { href: "/dashboard/expenses", icon: Receipt, label: "Expenses" },
+    { href: "/dashboard/mailchimp", icon: Mail, label: "Email Marketing" },
   ];
 
   const storeName = storeUrl

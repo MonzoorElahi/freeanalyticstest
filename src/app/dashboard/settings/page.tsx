@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Store, Shield, LogOut, CheckCircle } from "lucide-react";
+import { Store, Shield, LogOut, CheckCircle, Receipt } from "lucide-react";
+import ExpenseManager from "@/components/ExpenseManager";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -47,6 +48,24 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-6 max-w-3xl">
+        {/* Expense Manager */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-900/20">
+              <Receipt className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                Expense Management
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Track your business expenses to calculate accurate profit margins and ROI
+              </p>
+              <ExpenseManager />
+            </div>
+          </div>
+        </div>
+
         {/* Store Connection */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-start gap-4">

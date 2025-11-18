@@ -30,6 +30,7 @@ import SalesChart from "./charts/SalesChart";
 import ProductSalesChart from "./charts/ProductSalesChart";
 import CustomerChart from "./charts/CustomerChart";
 import DoughnutChart from "./charts/DoughnutChart";
+import ProfitLossChart from "./charts/ProfitLossChart";
 import ExportButton from "./ExportButton";
 import ComparisonChart from "./charts/ComparisonChart";
 import GoalIndicator from "./GoalIndicator";
@@ -125,6 +126,38 @@ interface AnalyticsResponse {
     projectedRevenue: number;
     lowerBound: number;
     upperBound: number;
+  }[];
+  profitMetrics?: {
+    revenue: number;
+    cogs: number;
+    grossProfit: number;
+    grossMargin: number;
+    expenses: number;
+    netProfit: number;
+    netMargin: number;
+    roi: number;
+  };
+  profitByDate?: {
+    date: string;
+    revenue: number;
+    cogs: number;
+    expenses: number;
+    grossProfit: number;
+    netProfit: number;
+  }[];
+  productProfitability?: {
+    productId: number;
+    name: string;
+    revenue: number;
+    cogs: number;
+    grossProfit: number;
+    margin: number;
+    unitsSold: number;
+  }[];
+  expensesByCategory?: {
+    category: string;
+    total: number;
+    count: number;
   }[];
 }
 
@@ -497,6 +530,130 @@ export default function DashboardContent() {
           icon={TrendingUp}
         />
       </div>
+
+      {/* Profit/Loss Metrics - NEW! */}
+      {data.profitMetrics && (
+        <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl p-6 border border-purple-200 dark:border-purple-700 mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-purple-600" />
+            Profit & Loss Overview
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">COGS</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(data.profitMetrics.cogs, currency)}</p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Expenses</p>
+              <p className="text-xl font-bold text-orange-600">{formatCurrency(data.profitMetrics.expenses, currency)}</p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gross Profit</p>
+              <p className="text-xl font-bold text-blue-600">{formatCurrency(data.profitMetrics.grossProfit, currency)}</p>
+              <p className="text-xs text-gray-500 mt-1">{formatPercentage(data.profitMetrics.grossMargin)} margin</p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Net Profit</p>
+              <p className={`text-xl font-bold ${data.profitMetrics.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatCurrency(data.profitMetrics.netProfit, currency)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">{formatPercentage(data.profitMetrics.netMargin)} margin</p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">ROI</p>
+              <p className={`text-xl font-bold ${data.profitMetrics.roi >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatPercentage(data.profitMetrics.roi)}
+              </p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 flex items-center justify-center">
+              <button
+                onClick={() => window.location.href = '/dashboard/settings'}
+                className="text-sm text-purple-600 dark:text-purple-400 hover:underline font-medium"
+              >
+                Manage Expenses →
+              </button>
+            </div>
+          </div>
+
+          {/* Profit/Loss Trend Chart */}
+          {data.profitByDate && data.profitByDate.length > 0 && (
+            <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl p-6">
+              <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-4">Profit/Loss Trends</h4>
+              <ProfitLossChart data={data.profitByDate} currency={currency} />
+            </div>
+          )}
+
+          {/* Product Profitability & Expenses Breakdown */}
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Most Profitable Products */}
+            {data.productProfitability && data.productProfitability.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-6">
+                <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                  Most Profitable Products
+                </h4>
+                <div className="space-y-3">
+                  {data.productProfitability.slice(0, 5).map((product, idx) => (
+                    <div key={product.productId} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                          idx === 0 ? "bg-yellow-100 text-yellow-700" :
+                          idx === 1 ? "bg-gray-100 text-gray-700" :
+                          idx === 2 ? "bg-orange-100 text-orange-700" :
+                          "bg-gray-50 text-gray-600"
+                        }`}>
+                          {idx + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{product.name}</p>
+                          <p className="text-xs text-gray-500">{product.unitsSold} units</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-green-600">{formatCurrency(product.grossProfit, currency)}</p>
+                        <p className="text-xs text-gray-500">{formatPercentage(product.margin)} margin</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Expenses by Category */}
+            {data.expensesByCategory && data.expensesByCategory.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-6">
+                <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-orange-600" />
+                  Expenses by Category
+                </h4>
+                <div className="space-y-3">
+                  {data.expensesByCategory.map((category, idx) => {
+                    const maxExpense = Math.max(...data.expensesByCategory!.map(c => c.total));
+                    const percentage = (category.total / maxExpense) * 100;
+                    return (
+                      <div key={category.category}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{category.category}</span>
+                          <div className="text-right">
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(category.total, currency)}</span>
+                            <span className="text-xs text-gray-500 ml-2">({category.count} items)</span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                          <div
+                            className="h-full bg-gradient-to-r from-orange-500 to-orange-600 rounded-full"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-700">

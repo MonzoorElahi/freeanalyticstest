@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { createWooClient, fetchOrders, fetchCustomers, fetchProducts } from "@/lib/woocommerce";
-import { WooOrder, WooCustomer, SalesData, CustomerData, DashboardMetrics } from "@/types";
+import { WooOrder, WooCustomer, WooProduct, SalesData, CustomerData, DashboardMetrics, Expense, ProfitMetrics, ProfitByDate, ProductProfitability, ExpenseByCategory } from "@/types";
 import { subDays, subYears, format, parseISO, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
 import { analyzeFrequentlyBoughtTogether, segmentCustomers, forecastRevenue, analyzeProductVelocity } from "@/lib/analytics";
 import { analyticsCache, getCacheKey, withCache } from "@/lib/cache";
+import fs from "fs/promises";
+import path from "path";
 
 // WooCommerce counts these statuses for orders (not pending, not failed)
 const VALID_ORDER_STATUSES = ["completed", "processing", "on-hold"];
@@ -48,6 +50,251 @@ function getOrderNetTotal(order: WooOrder): number {
   const total = parseFloat(order.total);
   const refundTotal = order.refunds?.reduce((sum, r) => sum + Math.abs(parseFloat(r.total)), 0) || 0;
   return total - refundTotal;
+}
+
+// Helper function to get product cost from WooCommerce meta data
+function getProductCost(product: WooProduct): number {
+  // Check for cost in meta_data (common plugins use "_cost" or "cost")
+  const costMeta = product.meta_data?.find(
+    (m: any) => m.key === "_cost" || m.key === "cost" || m.key === "_wc_cog_cost"
+  );
+  return costMeta ? parseFloat(String(costMeta.value)) || 0 : 0;
+}
+
+// Read expenses from file
+async function readExpenses(): Promise<Expense[]> {
+  try {
+    const expensesFile = path.join(process.cwd(), "data", "expenses.json");
+    const data = await fs.readFile(expensesFile, "utf-8");
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+// Calculate profit metrics
+function calculateProfitMetrics(
+  orders: WooOrder[],
+  products: WooProduct[],
+  expenses: Expense[],
+  startDate: Date,
+  endDate: Date
+): {
+  profitMetrics: ProfitMetrics;
+  profitByDate: ProfitByDate[];
+  productProfitability: ProductProfitability[];
+  expensesByCategory: ExpenseByCategory[];
+} {
+  // Validate inputs
+  if (!orders || !Array.isArray(orders)) orders = [];
+  if (!products || !Array.isArray(products)) products = [];
+  if (!expenses || !Array.isArray(expenses)) expenses = [];
+
+  // Filter orders by date
+  const periodOrders = orders.filter((order) => {
+    try {
+      const orderDate = parseISO(order.date_created);
+      return (
+        isAfter(orderDate, startOfDay(startDate)) &&
+        isBefore(orderDate, endOfDay(endDate)) &&
+        NET_SALES_STATUSES.includes(order.status)
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  // Filter expenses by date
+  const periodExpenses = expenses.filter((expense) => {
+    try {
+      const expenseDate = new Date(expense.date);
+      return expenseDate >= startOfDay(startDate) && expenseDate <= endOfDay(endDate);
+    } catch {
+      return false;
+    }
+  });
+
+  // Create product cost map
+  const productCostMap = new Map<number, number>();
+  products.forEach((product) => {
+    try {
+      const cost = getProductCost(product);
+      if (!isNaN(cost) && isFinite(cost)) {
+        productCostMap.set(product.id, cost);
+      }
+    } catch {
+      // Skip invalid products
+    }
+  });
+
+  // Calculate revenue and COGS
+  let totalRevenue = 0;
+  let totalCOGS = 0;
+  const profitByDateMap = new Map<string, { revenue: number; cogs: number; expenses: number }>();
+  const productProfitMap = new Map<number, { name: string; revenue: number; cogs: number; units: number }>();
+
+  periodOrders.forEach((order) => {
+    try {
+      const orderDate = format(parseISO(order.date_created), "yyyy-MM-dd");
+      const orderRevenue = getOrderNetTotal(order);
+      let orderCOGS = 0;
+
+      // Validate order revenue
+      if (isNaN(orderRevenue) || !isFinite(orderRevenue)) return;
+
+      // Calculate COGS for this order
+      if (order.line_items && Array.isArray(order.line_items)) {
+        order.line_items.forEach((item) => {
+          try {
+            const cost = productCostMap.get(item.product_id) || 0;
+            const quantity = Number(item.quantity) || 0;
+            const itemCOGS = cost * quantity;
+
+            if (!isNaN(itemCOGS) && isFinite(itemCOGS)) {
+              orderCOGS += itemCOGS;
+
+              // Track product profitability
+              const existing = productProfitMap.get(item.product_id) || {
+                name: item.name || 'Unknown Product',
+                revenue: 0,
+                cogs: 0,
+                units: 0,
+              };
+
+              const itemRevenue = parseFloat(item.total || "0");
+              if (!isNaN(itemRevenue) && isFinite(itemRevenue)) {
+                productProfitMap.set(item.product_id, {
+                  name: item.name || 'Unknown Product',
+                  revenue: existing.revenue + itemRevenue,
+                  cogs: existing.cogs + itemCOGS,
+                  units: existing.units + quantity,
+                });
+              }
+            }
+          } catch {
+            // Skip invalid line items
+          }
+        });
+      }
+
+      totalRevenue += orderRevenue;
+      totalCOGS += orderCOGS;
+
+      // Track by date
+      const existing = profitByDateMap.get(orderDate) || { revenue: 0, cogs: 0, expenses: 0 };
+      profitByDateMap.set(orderDate, {
+        revenue: existing.revenue + orderRevenue,
+        cogs: existing.cogs + orderCOGS,
+        expenses: existing.expenses,
+      });
+    } catch {
+      // Skip invalid orders
+    }
+  });
+
+  // Add expenses to date map
+  periodExpenses.forEach((expense) => {
+    try {
+      const expenseDate = format(new Date(expense.date), "yyyy-MM-dd");
+      const amount = Number(expense.amount) || 0;
+
+      if (!isNaN(amount) && isFinite(amount)) {
+        const existing = profitByDateMap.get(expenseDate) || { revenue: 0, cogs: 0, expenses: 0 };
+        profitByDateMap.set(expenseDate, {
+          ...existing,
+          expenses: existing.expenses + amount,
+        });
+      }
+    } catch {
+      // Skip invalid expenses
+    }
+  });
+
+  // Calculate totals with safety checks
+  const totalExpenses = periodExpenses.reduce((sum, e) => {
+    const amount = Number(e.amount) || 0;
+    return sum + (isNaN(amount) || !isFinite(amount) ? 0 : amount);
+  }, 0);
+
+  const grossProfit = totalRevenue - totalCOGS;
+  const netProfit = grossProfit - totalExpenses;
+  const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+  const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+  const roi = totalCOGS + totalExpenses > 0 ? (netProfit / (totalCOGS + totalExpenses)) * 100 : 0;
+
+  // Ensure all values are valid numbers
+  const safeNumber = (val: number) => (isNaN(val) || !isFinite(val) ? 0 : val);
+
+  const profitMetrics: ProfitMetrics = {
+    revenue: safeNumber(totalRevenue),
+    cogs: safeNumber(totalCOGS),
+    grossProfit: safeNumber(grossProfit),
+    grossMargin: safeNumber(grossMargin),
+    expenses: safeNumber(totalExpenses),
+    netProfit: safeNumber(netProfit),
+    netMargin: safeNumber(netMargin),
+    roi: safeNumber(roi),
+  };
+
+  // Convert maps to arrays with validation
+  const profitByDate = Array.from(profitByDateMap.entries())
+    .map(([date, data]) => ({
+      date,
+      revenue: safeNumber(data.revenue),
+      cogs: safeNumber(data.cogs),
+      expenses: safeNumber(data.expenses),
+      grossProfit: safeNumber(data.revenue - data.cogs),
+      netProfit: safeNumber(data.revenue - data.cogs - data.expenses),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const productProfitability = Array.from(productProfitMap.entries())
+    .map(([productId, data]) => {
+      const grossProfit = data.revenue - data.cogs;
+      const margin = data.revenue > 0 ? ((data.revenue - data.cogs) / data.revenue) * 100 : 0;
+      return {
+        productId,
+        name: data.name,
+        revenue: safeNumber(data.revenue),
+        cogs: safeNumber(data.cogs),
+        grossProfit: safeNumber(grossProfit),
+        margin: safeNumber(margin),
+        unitsSold: data.units,
+      };
+    })
+    .sort((a, b) => b.grossProfit - a.grossProfit);
+
+  // Group expenses by category
+  const expenseByCategoryMap = new Map<string, { total: number; count: number }>();
+  periodExpenses.forEach((expense) => {
+    try {
+      const amount = Number(expense.amount) || 0;
+      if (!isNaN(amount) && isFinite(amount) && expense.category) {
+        const existing = expenseByCategoryMap.get(expense.category) || { total: 0, count: 0 };
+        expenseByCategoryMap.set(expense.category, {
+          total: existing.total + amount,
+          count: existing.count + 1,
+        });
+      }
+    } catch {
+      // Skip invalid expenses
+    }
+  });
+
+  const expensesByCategory = Array.from(expenseByCategoryMap.entries())
+    .map(([category, data]) => ({
+      category: category as any,
+      total: safeNumber(data.total),
+      count: data.count,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  return {
+    profitMetrics,
+    profitByDate,
+    productProfitability,
+    expensesByCategory,
+  };
 }
 
 function calculateExtendedSalesAnalytics(
@@ -381,6 +628,152 @@ function calculateExtendedCustomerAnalytics(
     .filter((a) => a.source.includes("Ads"))
     .reduce((sum, a) => sum + a.count, 0);
 
+  // Order source trends over time
+  const orderSourceByDateMap = new Map<string, Map<string, { count: number; revenue: number }>>();
+
+  periodOrders.forEach((order) => {
+    const date = format(parseISO(order.date_created), "yyyy-MM-dd");
+    let source = "Direct / Organic";
+
+    // Same source detection logic as above
+    const utmSource = order.meta_data?.find((m) => m.key === "_wc_order_attribution_utm_source");
+    const utmMedium = order.meta_data?.find((m) => m.key === "_wc_order_attribution_utm_medium");
+    const sourceType = order.meta_data?.find((m) => m.key === "_wc_order_attribution_source_type");
+
+    if (sourceType?.value === "utm") {
+      const medium = utmMedium?.value?.toString().toLowerCase() || "";
+      const src = utmSource?.value?.toString().toLowerCase() || "";
+
+      if (medium.includes("cpc") || medium.includes("paid") || medium.includes("ppc")) {
+        if (src.includes("google")) {
+          source = "Google Ads";
+        } else if (src.includes("facebook") || src.includes("fb")) {
+          source = "Facebook Ads";
+        } else if (src.includes("instagram")) {
+          source = "Instagram Ads";
+        } else if (src.includes("bing")) {
+          source = "Bing Ads";
+        } else {
+          source = "Paid Ads";
+        }
+      } else if (medium.includes("social")) {
+        source = "Social Media";
+      } else if (medium.includes("email")) {
+        source = "Email Marketing";
+      } else if (medium.includes("referral")) {
+        source = "Referral";
+      } else {
+        source = "UTM Campaign";
+      }
+    } else if (sourceType?.value === "organic") {
+      source = "Organic Search";
+    } else if (sourceType?.value === "referral") {
+      source = "Referral";
+    } else if (sourceType?.value === "direct") {
+      source = "Direct";
+    }
+
+    const hasGclid = order.meta_data?.some((m) => m.key.includes("gclid"));
+    const hasFbclid = order.meta_data?.some((m) => m.key.includes("fbclid"));
+
+    if (hasGclid) source = "Google Ads";
+    else if (hasFbclid) source = "Facebook Ads";
+
+    if (!orderSourceByDateMap.has(date)) {
+      orderSourceByDateMap.set(date, new Map());
+    }
+
+    const dateMap = orderSourceByDateMap.get(date)!;
+    const existing = dateMap.get(source) || { count: 0, revenue: 0 };
+    dateMap.set(source, {
+      count: existing.count + 1,
+      revenue: existing.revenue + getOrderNetTotal(order),
+    });
+  });
+
+  const orderSourceTrends = Array.from(orderSourceByDateMap.entries())
+    .map(([date, sourceMap]) => ({
+      date,
+      sources: Array.from(sourceMap.entries()).map(([source, data]) => ({
+        source,
+        count: data.count,
+        revenue: data.revenue,
+      })),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  // New customers by source over time
+  const newCustomersBySourceMap = new Map<string, Map<string, number>>();
+
+  newCustomerIds.forEach((customerId) => {
+    const firstOrder = periodOrders.find((o) => o.customer_id === customerId);
+    if (firstOrder) {
+      const date = format(parseISO(firstOrder.date_created), "yyyy-MM-dd");
+      let source = "Direct / Organic";
+
+      // Same source detection logic
+      const utmSource = firstOrder.meta_data?.find((m) => m.key === "_wc_order_attribution_utm_source");
+      const utmMedium = firstOrder.meta_data?.find((m) => m.key === "_wc_order_attribution_utm_medium");
+      const sourceType = firstOrder.meta_data?.find((m) => m.key === "_wc_order_attribution_source_type");
+
+      if (sourceType?.value === "utm") {
+        const medium = utmMedium?.value?.toString().toLowerCase() || "";
+        const src = utmSource?.value?.toString().toLowerCase() || "";
+
+        if (medium.includes("cpc") || medium.includes("paid") || medium.includes("ppc")) {
+          if (src.includes("google")) {
+            source = "Google Ads";
+          } else if (src.includes("facebook") || src.includes("fb")) {
+            source = "Facebook Ads";
+          } else if (src.includes("instagram")) {
+            source = "Instagram Ads";
+          } else if (src.includes("bing")) {
+            source = "Bing Ads";
+          } else {
+            source = "Paid Ads";
+          }
+        } else if (medium.includes("social")) {
+          source = "Social Media";
+        } else if (medium.includes("email")) {
+          source = "Email Marketing";
+        } else if (medium.includes("referral")) {
+          source = "Referral";
+        } else {
+          source = "UTM Campaign";
+        }
+      } else if (sourceType?.value === "organic") {
+        source = "Organic Search";
+      } else if (sourceType?.value === "referral") {
+        source = "Referral";
+      } else if (sourceType?.value === "direct") {
+        source = "Direct";
+      }
+
+      const hasGclid = firstOrder.meta_data?.some((m) => m.key.includes("gclid"));
+      const hasFbclid = firstOrder.meta_data?.some((m) => m.key.includes("fbclid"));
+
+      if (hasGclid) source = "Google Ads";
+      else if (hasFbclid) source = "Facebook Ads";
+
+      if (!newCustomersBySourceMap.has(date)) {
+        newCustomersBySourceMap.set(date, new Map());
+      }
+
+      const dateMap = newCustomersBySourceMap.get(date)!;
+      dateMap.set(source, (dateMap.get(source) || 0) + 1);
+    }
+  });
+
+  const newCustomersBySource = Array.from(newCustomersBySourceMap.entries())
+    .map(([date, sourceMap]) => ({
+      date,
+      sources: Array.from(sourceMap.entries()).map(([source, count]) => ({
+        source,
+        count,
+      })),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   // New vs Returning revenue
   let newCustomerRevenue = 0;
   let returningCustomerRevenue = 0;
@@ -464,6 +857,8 @@ function calculateExtendedCustomerAnalytics(
     customersByCountry,
     newVsReturning,
     adsAttribution,
+    orderSourceTrends,
+    newCustomersBySource,
   };
 }
 
@@ -553,6 +948,10 @@ export async function GET(request: Request) {
     );
     const productVelocity = analyzeProductVelocity(orders, products, days).slice(0, 20);
 
+    // Profit/Loss analytics
+    const expenses = await readExpenses();
+    const profitData = calculateProfitMetrics(orders, products, expenses, startDate, endDate);
+
     return NextResponse.json({
       metrics,
       salesData,
@@ -574,6 +973,11 @@ export async function GET(request: Request) {
       customerSegments,
       revenueForecast,
       productVelocity,
+      // Profit/Loss analytics
+      profitMetrics: profitData.profitMetrics,
+      profitByDate: profitData.profitByDate,
+      productProfitability: profitData.productProfitability,
+      expensesByCategory: profitData.expensesByCategory,
     });
   } catch (error) {
     console.error("Error fetching analytics:", error);

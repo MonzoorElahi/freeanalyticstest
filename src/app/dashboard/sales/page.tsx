@@ -24,6 +24,9 @@ import ProductSalesChart from "@/components/charts/ProductSalesChart";
 import DoughnutChart from "@/components/charts/DoughnutChart";
 import ComparisonChart from "@/components/charts/ComparisonChart";
 import ProductTrendChart from "@/components/charts/ProductTrendChart";
+import OrderSourceTrendChart from "@/components/charts/OrderSourceTrendChart";
+import NewCustomersChart from "@/components/charts/NewCustomersChart";
+import CustomerSourceTrendChart from "@/components/charts/CustomerSourceTrendChart";
 import { DashboardSkeleton } from "@/components/Skeleton";
 import Sparkline from "@/components/Sparkline";
 
@@ -64,6 +67,15 @@ interface SalesAnalytics {
   };
   customerData?: {
     adsAttribution: { source: string; count: number; revenue: number }[];
+    customersByDate: { date: string; count: number }[];
+    orderSourceTrends?: {
+      date: string;
+      sources: { source: string; count: number; revenue: number }[];
+    }[];
+    newCustomersBySource?: {
+      date: string;
+      sources: { source: string; count: number }[];
+    }[];
   };
   productVelocity?: ProductVelocity[];
   currency: string;
@@ -597,6 +609,67 @@ export default function SalesPage() {
               })}
             </div>
           </div>
+
+          {/* Order Source Trends Over Time - NEW! */}
+          {data.customerData?.orderSourceTrends && data.customerData.orderSourceTrends.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-blue-600" />
+                  Sales by Traffic Source Over Time
+                </h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setProductMetric("sales")}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      productMetric === "sales"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    Revenue
+                  </button>
+                  <button
+                    onClick={() => setProductMetric("quantity")}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      productMetric === "quantity"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    Orders
+                  </button>
+                </div>
+              </div>
+              <OrderSourceTrendChart
+                data={data.customerData.orderSourceTrends}
+                metric={productMetric === "sales" ? "revenue" : "count"}
+                currency={currency}
+              />
+            </div>
+          )}
+
+          {/* New Customers Per Day - NEW! */}
+          {data.customerData?.customersByDate && data.customerData.customersByDate.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-purple-600" />
+                New Customers Per Day
+              </h3>
+              <NewCustomersChart data={data.customerData.customersByDate} />
+            </div>
+          )}
+
+          {/* New Customers by Source Over Time - NEW! */}
+          {data.customerData?.newCustomersBySource && data.customerData.newCustomersBySource.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-green-600" />
+                New Customer Acquisition by Source
+              </h3>
+              <CustomerSourceTrendChart data={data.customerData.newCustomersBySource} />
+            </div>
+          )}
         </>
       )}
     </div>
