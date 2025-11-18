@@ -55,6 +55,7 @@ export default function ExportButton({ days, startDate, endDate }: ExportButtonP
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
+        data-export-button
         className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
       >
         <Download className="w-4 h-4 text-gray-600 dark:text-gray-400" />

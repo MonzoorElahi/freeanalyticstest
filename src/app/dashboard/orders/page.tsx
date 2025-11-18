@@ -1,12 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { RefreshCw, Filter, Search, ShoppingCart, DollarSign, Package, TrendingUp, Clock, CheckCircle, XCircle, AlertCircle, Calendar } from "lucide-react";
+import { RefreshCw, Filter, Search, ShoppingCart, DollarSign, Package, TrendingUp, Clock, CheckCircle, XCircle, AlertCircle, Calendar, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { format, parseISO, subDays, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
 import { WooOrder } from "@/types";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { DashboardSkeleton } from "@/components/Skeleton";
 import DoughnutChart from "@/components/charts/DoughnutChart";
+import EmptyState from "@/components/EmptyState";
+
+type SortField = "id" | "date" | "customer" | "status" | "total";
+type SortDirection = "asc" | "desc";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<WooOrder[]>([]);
@@ -15,6 +19,8 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [currency, setCurrency] = useState("EUR");
   const [days, setDays] = useState(30); // Date range filter
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -51,15 +57,42 @@ export default function OrdersPage() {
     });
   }, [orders, days]);
 
-  const filteredOrders = dateFilteredOrders.filter((order) => {
-    const matchesSearch =
-      searchTerm === "" ||
-      order.id.toString().includes(searchTerm) ||
-      `${order.billing.first_name} ${order.billing.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.billing.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredOrders = useMemo(() => {
+    let filtered = dateFilteredOrders.filter((order) => {
+      const matchesSearch =
+        searchTerm === "" ||
+        order.id.toString().includes(searchTerm) ||
+        `${order.billing.first_name} ${order.billing.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.billing.email.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+
+    // Apply sorting
+    return filtered.sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case "id":
+          comparison = a.id - b.id;
+          break;
+        case "date":
+          comparison = new Date(a.date_created).getTime() - new Date(b.date_created).getTime();
+          break;
+        case "customer":
+          const nameA = `${a.billing.first_name} ${a.billing.last_name}`.toLowerCase();
+          const nameB = `${b.billing.first_name} ${b.billing.last_name}`.toLowerCase();
+          comparison = nameA.localeCompare(nameB);
+          break;
+        case "status":
+          comparison = a.status.localeCompare(b.status);
+          break;
+        case "total":
+          comparison = parseFloat(a.total) - parseFloat(b.total);
+          break;
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }, [dateFilteredOrders, searchTerm, statusFilter, sortField, sortDirection]);
 
   // Calculate metrics from date-filtered orders
   const totalRevenue = dateFilteredOrders.reduce((sum, o) => sum + parseFloat(o.total), 0);
@@ -98,7 +131,59 @@ export default function OrdersPage() {
     }
   };
 
+  const clearFilters = () => {
+    setSearchTerm("");
+    setStatusFilter("all");
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("desc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-4 h-4 text-gray-400" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-4 h-4 text-purple-600" />
+    ) : (
+      <ArrowDown className="w-4 h-4 text-purple-600" />
+    );
+  };
+
   if (loading && orders.length === 0) return <DashboardSkeleton />;
+
+  // No orders at all
+  if (!loading && orders.length === 0) {
+    return (
+      <div className="animate-fadeIn">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <ShoppingCart className="w-7 h-7 text-purple-600" />
+              Orders Management
+            </h1>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8">
+          <EmptyState
+            icon={ShoppingCart}
+            title="No orders yet"
+            description="You haven't received any orders yet. Once customers start placing orders, they'll appear here."
+            action={{
+              label: "Refresh Data",
+              onClick: fetchOrders,
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fadeIn">
@@ -258,12 +343,52 @@ export default function OrdersPage() {
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-700/50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Order</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Customer</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                <th
+                  onClick={() => handleSort("id")}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    Order
+                    <SortIcon field="id" />
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("date")}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    Date
+                    <SortIcon field="date" />
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("customer")}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    Customer
+                    <SortIcon field="customer" />
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("status")}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    Status
+                    <SortIcon field="status" />
+                  </div>
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Items</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Total</th>
+                <th
+                  onClick={() => handleSort("total")}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    Total
+                    <SortIcon field="total" />
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -296,7 +421,17 @@ export default function OrdersPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">No orders found</td>
+                  <td colSpan={6} className="px-6 py-12">
+                    <EmptyState
+                      icon={Search}
+                      title="No orders match your filters"
+                      description="Try adjusting your search terms or filters to find what you're looking for."
+                      action={{
+                        label: "Clear Filters",
+                        onClick: clearFilters,
+                      }}
+                    />
+                  </td>
                 </tr>
               )}
             </tbody>

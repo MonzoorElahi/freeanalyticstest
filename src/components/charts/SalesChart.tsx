@@ -14,6 +14,7 @@ import {
 } from "chart.js";
 import { Line, Bar } from "react-chartjs-2";
 import { format, parseISO } from "date-fns";
+import { getCurrencySymbol } from "@/lib/formatters";
 
 ChartJS.register(
   CategoryScale,
@@ -31,13 +32,16 @@ interface SalesChartProps {
   data: { date: string; total: number; orders: number }[];
   type?: "line" | "bar";
   showOrders?: boolean;
+  currency?: string;
 }
 
 export default function SalesChart({
   data,
   type = "line",
   showOrders = false,
+  currency = "USD",
 }: SalesChartProps) {
+  const currencySymbol = getCurrencySymbol(currency);
   const labels = data.map((d) => format(parseISO(d.date), "MMM dd"));
   const salesData = data.map((d) => d.total);
   const ordersData = data.map((d) => d.orders);
@@ -93,7 +97,7 @@ export default function SalesChart({
             const label = context.dataset.label || "";
             const value = context.parsed.y;
             if (label === "Revenue") {
-              return `${label}: $${value?.toLocaleString()}`;
+              return `${label}: ${currencySymbol}${value?.toLocaleString()}`;
             }
             return `${label}: ${value}`;
           },
@@ -115,7 +119,7 @@ export default function SalesChart({
         },
         ticks: {
           callback: function (value: string | number) {
-            return "$" + Number(value).toLocaleString();
+            return currencySymbol + Number(value).toLocaleString();
           },
         },
       },

@@ -36,6 +36,9 @@ import GoalIndicator from "./GoalIndicator";
 import { DashboardSkeleton } from "./Skeleton";
 import QuickInsights from "./QuickInsights";
 import LiveIndicator from "./LiveIndicator";
+import Sparkline from "./Sparkline";
+import KeyboardShortcuts from "./KeyboardShortcuts";
+import Tooltip from "./Tooltip";
 
 interface AnalyticsResponse {
   metrics: {
@@ -211,6 +214,8 @@ export default function DashboardContent() {
     subtitle,
     compareLabel,
     delay = 0,
+    trendData,
+    tooltip,
   }: {
     title: string;
     value: string;
@@ -219,6 +224,8 @@ export default function DashboardContent() {
     subtitle?: string;
     compareLabel?: string;
     delay?: number;
+    trendData?: number[];
+    tooltip?: string;
   }) => {
     const isPositive = change !== undefined && change >= 0;
     return (
@@ -230,25 +237,35 @@ export default function DashboardContent() {
           <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg group-hover:bg-purple-100 dark:group-hover:bg-purple-900/30 transition-colors">
             <Icon className="w-6 h-6 text-purple-600 dark:text-purple-400" />
           </div>
-          {change !== undefined && (
-            <div
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium animate-fadeIn ${
-                isPositive
-                  ? "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"
-                  : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-              }`}
-            >
-              {isPositive ? (
-                <ArrowUpRight className="w-4 h-4" />
-              ) : (
-                <ArrowDownRight className="w-4 h-4" />
-              )}
-              {formatPercentage(change)}
+          <div className="flex items-center gap-2">
+            {change !== undefined && (
+              <div
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium animate-fadeIn ${
+                  isPositive
+                    ? "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"
+                    : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
+                }`}
+              >
+                {isPositive ? (
+                  <ArrowUpRight className="w-4 h-4" />
+                ) : (
+                  <ArrowDownRight className="w-4 h-4" />
+                )}
+                {formatPercentage(change)}
+              </div>
+            )}
+            {tooltip && <Tooltip content={tooltip} />}
+          </div>
+        </div>
+        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</h3>
+        <div className="flex items-end justify-between gap-4 mb-1">
+          <p className="text-3xl font-bold text-gray-900 dark:text-white tabular-nums">{value}</p>
+          {trendData && trendData.length > 0 && (
+            <div className="mb-1">
+              <Sparkline data={trendData} width={80} height={24} />
             </div>
           )}
         </div>
-        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</h3>
-        <p className="text-3xl font-bold text-gray-900 dark:text-white mb-1 tabular-nums">{value}</p>
         {subtitle && (
           <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>
         )}
@@ -281,6 +298,55 @@ export default function DashboardContent() {
     compareType === "year"
       ? `vs. same period last year`
       : `vs. previous ${days} days`;
+
+  // Prepare trend data for sparklines (last 7-14 days)
+  const trendDays = Math.min(days, 14);
+  const revenueTrend = salesData.revenueByDay.slice(-trendDays).map((d) => d.net);
+  const ordersTrend = salesData.revenueByDay.slice(-trendDays).map((d) => d.orders);
+  const customersTrend = customerData.customersByDate.slice(-trendDays).map((d) => d.count);
+
+  // Keyboard shortcuts
+  const shortcuts = [
+    {
+      key: "r",
+      modifier: "ctrl" as const,
+      description: "Refresh data",
+      action: fetchData,
+    },
+    {
+      key: "e",
+      modifier: "ctrl" as const,
+      description: "Export data",
+      action: () => {
+        // Trigger export button click
+        document.querySelector<HTMLButtonElement>('[data-export-button]')?.click();
+      },
+    },
+    {
+      key: "1",
+      modifier: "ctrl" as const,
+      description: "Switch to Overview tab",
+      action: () => setActiveTab("overview"),
+    },
+    {
+      key: "2",
+      modifier: "ctrl" as const,
+      description: "Switch to Sales tab",
+      action: () => setActiveTab("sales"),
+    },
+    {
+      key: "3",
+      modifier: "ctrl" as const,
+      description: "Switch to Customers tab",
+      action: () => setActiveTab("customers"),
+    },
+    {
+      key: "a",
+      modifier: "ctrl" as const,
+      description: "Toggle auto-refresh",
+      action: () => setAutoRefresh(!autoRefresh),
+    },
+  ];
 
   return (
     <div className="animate-fadeIn">
@@ -363,6 +429,8 @@ export default function DashboardContent() {
           subtitle={`Gross: ${formatCurrency(salesData.grossSales, currency)}`}
           compareLabel={compareLabel}
           delay={0}
+          trendData={revenueTrend}
+          tooltip="Net sales after refunds, discounts, and returns. Sparkline shows last 7-14 days trend."
         />
         <MetricCardLarge
           title="Orders"
@@ -372,6 +440,8 @@ export default function DashboardContent() {
           subtitle={`${formatNumber(salesData.itemsSold)} items sold`}
           compareLabel={compareLabel}
           delay={100}
+          trendData={ordersTrend}
+          tooltip="Total number of completed orders. Includes all order statuses."
         />
         <MetricCardLarge
           title="New Customers"
@@ -381,6 +451,8 @@ export default function DashboardContent() {
           subtitle={`${formatNumber(customerData.returningCustomers)} returning`}
           compareLabel={compareLabel}
           delay={200}
+          trendData={customersTrend}
+          tooltip="First-time customers acquired in this period. Sparkline shows daily acquisition trend."
         />
         <MetricCardLarge
           title="Avg Order Value"
@@ -388,6 +460,7 @@ export default function DashboardContent() {
           icon={Receipt}
           subtitle={`${formatNumber(salesData.avgItemsPerOrder, 1)} items/order`}
           delay={300}
+          tooltip="Average revenue per order. Calculated as total revenue / total orders."
         />
       </div>
 
@@ -498,7 +571,7 @@ export default function DashboardContent() {
               Revenue & Orders Trend
             </h3>
             {salesData.salesByDate.length > 0 ? (
-              <SalesChart data={salesData.salesByDate} showOrders={true} />
+              <SalesChart data={salesData.salesByDate} showOrders={true} currency={currency} />
             ) : (
               <div className="h-80 flex items-center justify-center text-gray-500">
                 No sales data for this period
@@ -514,7 +587,7 @@ export default function DashboardContent() {
                 Top Products by Revenue
               </h3>
               {salesData.topProducts.length > 0 ? (
-                <ProductSalesChart data={salesData.topProducts} metric="sales" />
+                <ProductSalesChart data={salesData.topProducts} metric="sales" currency={currency} />
               ) : (
                 <div className="h-96 flex items-center justify-center text-gray-500">
                   No product data
@@ -921,6 +994,9 @@ export default function DashboardContent() {
           </div>
         </div>
       )}
+
+      {/* Keyboard Shortcuts */}
+      <KeyboardShortcuts shortcuts={shortcuts} enabled={true} />
     </div>
   );
 }

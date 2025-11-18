@@ -2,6 +2,7 @@
 
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
+import { useToast } from "../Toast";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -9,13 +10,16 @@ interface DoughnutChartProps {
   labels: string[];
   data: number[];
   title?: string;
+  onSegmentClick?: (label: string, value: number, index: number) => void;
 }
 
 export default function DoughnutChart({
   labels,
   data,
   title,
+  onSegmentClick,
 }: DoughnutChartProps) {
+  const { showToast } = useToast();
   const chartData = {
     labels,
     datasets: [
@@ -57,6 +61,30 @@ export default function DoughnutChart({
       },
     },
     cutout: "60%",
+    onClick: (_event: any, elements: any[]) => {
+      if (elements.length > 0) {
+        const index = elements[0].index;
+        const label = labels[index];
+        const value = data[index];
+
+        if (onSegmentClick) {
+          onSegmentClick(label, value, index);
+        } else {
+          // Default behavior: show toast notification
+          showToast({
+            type: "info",
+            title: "Filter by " + label,
+            message: `Click handler not configured. Value: ${value}`,
+            duration: 3000,
+          });
+        }
+      }
+    },
+    onHover: (event: any, elements: any[]) => {
+      if (event.native && event.native.target) {
+        event.native.target.style.cursor = elements.length > 0 ? "pointer" : "default";
+      }
+    },
   };
 
   return (

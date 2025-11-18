@@ -10,18 +10,26 @@ import {
   Legend,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
+import { getCurrencySymbol } from "@/lib/formatters";
+import { useToast } from "../Toast";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 interface ProductSalesChartProps {
   data: { name: string; sales: number; quantity: number }[];
   metric?: "sales" | "quantity";
+  currency?: string;
+  onBarClick?: (productName: string, value: number, index: number) => void;
 }
 
 export default function ProductSalesChart({
   data,
   metric = "sales",
+  currency = "USD",
+  onBarClick,
 }: ProductSalesChartProps) {
+  const currencySymbol = getCurrencySymbol(currency);
+  const { showToast } = useToast();
   const labels = data.map((d) =>
     d.name.length > 25 ? d.name.substring(0, 25) + "..." : d.name
   );
@@ -31,7 +39,7 @@ export default function ProductSalesChart({
     labels,
     datasets: [
       {
-        label: metric === "sales" ? "Revenue ($)" : "Units Sold",
+        label: metric === "sales" ? `Revenue (${currencySymbol})` : "Units Sold",
         data: values,
         backgroundColor: [
           "rgba(147, 51, 234, 0.8)",
@@ -65,7 +73,7 @@ export default function ProductSalesChart({
           label: function (context: { parsed: { x: number | null } }) {
             const value = context.parsed.x || 0;
             if (metric === "sales") {
-              return `Revenue: $${value.toLocaleString()}`;
+              return `Revenue: ${currencySymbol}${value.toLocaleString()}`;
             }
             return `Units: ${value}`;
           },
@@ -80,7 +88,7 @@ export default function ProductSalesChart({
         ticks: {
           callback: function (value: string | number) {
             if (metric === "sales") {
-              return "$" + Number(value).toLocaleString();
+              return currencySymbol + Number(value).toLocaleString();
             }
             return value;
           },
@@ -91,6 +99,30 @@ export default function ProductSalesChart({
           display: false,
         },
       },
+    },
+    onClick: (_event: any, elements: any[]) => {
+      if (elements.length > 0) {
+        const index = elements[0].index;
+        const productName = data[index].name;
+        const value = metric === "sales" ? data[index].sales : data[index].quantity;
+
+        if (onBarClick) {
+          onBarClick(productName, value, index);
+        } else {
+          // Default behavior: show toast notification
+          showToast({
+            type: "info",
+            title: "Product: " + productName,
+            message: `Click handler not configured. ${metric === "sales" ? "Revenue: " + currencySymbol + value.toLocaleString() : "Units: " + value}`,
+            duration: 3000,
+          });
+        }
+      }
+    },
+    onHover: (event: any, elements: any[]) => {
+      if (event.native && event.native.target) {
+        event.native.target.style.cursor = elements.length > 0 ? "pointer" : "default";
+      }
     },
   };
 

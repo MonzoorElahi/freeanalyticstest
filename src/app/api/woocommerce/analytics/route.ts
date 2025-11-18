@@ -3,7 +3,7 @@ import { getSession } from "@/lib/session";
 import { createWooClient, fetchOrders, fetchCustomers, fetchProducts } from "@/lib/woocommerce";
 import { WooOrder, WooCustomer, SalesData, CustomerData, DashboardMetrics } from "@/types";
 import { subDays, subYears, format, parseISO, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
-import { analyzeFrequentlyBoughtTogether, segmentCustomers, forecastRevenue } from "@/lib/analytics";
+import { analyzeFrequentlyBoughtTogether, segmentCustomers, forecastRevenue, analyzeProductVelocity } from "@/lib/analytics";
 import { analyticsCache, getCacheKey, withCache } from "@/lib/cache";
 
 // WooCommerce counts these statuses for orders (not pending, not failed)
@@ -551,6 +551,7 @@ export async function GET(request: Request) {
       salesData.revenueByDay.map((d) => ({ date: d.date, revenue: d.net })),
       7
     );
+    const productVelocity = analyzeProductVelocity(orders, products, days).slice(0, 20);
 
     return NextResponse.json({
       metrics,
@@ -572,6 +573,7 @@ export async function GET(request: Request) {
       frequentlyBoughtTogether,
       customerSegments,
       revenueForecast,
+      productVelocity,
     });
   } catch (error) {
     console.error("Error fetching analytics:", error);

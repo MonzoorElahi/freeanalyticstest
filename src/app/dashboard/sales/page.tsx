@@ -22,7 +22,19 @@ import { formatCurrency, formatNumber, formatPercentage } from "@/lib/formatters
 import SalesChart from "@/components/charts/SalesChart";
 import ProductSalesChart from "@/components/charts/ProductSalesChart";
 import DoughnutChart from "@/components/charts/DoughnutChart";
+import ComparisonChart from "@/components/charts/ComparisonChart";
+import ProductTrendChart from "@/components/charts/ProductTrendChart";
 import { DashboardSkeleton } from "@/components/Skeleton";
+import Sparkline from "@/components/Sparkline";
+
+interface ProductVelocity {
+  productId: number;
+  name: string;
+  totalSales: number;
+  avgDailySales: number;
+  trend: "increasing" | "decreasing" | "stable";
+  daysToSellOut: number | null;
+}
 
 interface SalesAnalytics {
   metrics: {
@@ -42,12 +54,18 @@ interface SalesAnalytics {
     avgItemsPerOrder: number;
     ordersByStatus: Record<string, number>;
     salesByDate: { date: string; total: number; orders: number }[];
+    revenueByDay: { date: string; gross: number; net: number; orders: number; items: number }[];
     salesByProduct: { productId: number; name: string; total: number; quantity: number }[];
     topProducts: { name: string; sales: number; quantity: number }[];
+    salesByCategory: { category: string; total: number; quantity: number }[];
     salesByPaymentMethod: { method: string; total: number; count: number }[];
     salesByCountry: { country: string; total: number; orders: number }[];
     hourlyDistribution: { hour: number; orders: number; revenue: number }[];
   };
+  customerData?: {
+    adsAttribution: { source: string; count: number; revenue: number }[];
+  };
+  productVelocity?: ProductVelocity[];
   currency: string;
 }
 
@@ -84,6 +102,12 @@ export default function SalesPage() {
 
   const { metrics, salesData, currency } = data;
 
+  // Prepare trend data for sparklines (last 7-14 days)
+  const trendDays = Math.min(days, 14);
+  const revenueTrend = salesData.revenueByDay.slice(-trendDays).map((d) => d.net);
+  const ordersTrend = salesData.revenueByDay.slice(-trendDays).map((d) => d.orders);
+  const itemsSoldTrend = salesData.revenueByDay.slice(-trendDays).map((d) => d.items);
+
   const MetricCard = ({
     title,
     value,
@@ -92,6 +116,7 @@ export default function SalesPage() {
     subtitle,
     color = "purple",
     delay = 0,
+    trendData,
   }: {
     title: string;
     value: string;
@@ -100,6 +125,7 @@ export default function SalesPage() {
     subtitle?: string;
     color?: string;
     delay?: number;
+    trendData?: number[];
   }) => {
     const isPositive = change !== undefined && change >= 0;
     const colorClasses: Record<string, string> = {
@@ -134,7 +160,14 @@ export default function SalesPage() {
           )}
         </div>
         <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">{title}</h3>
-        <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">{value}</p>
+        <div className="flex items-end justify-between gap-3 mb-1">
+          <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">{value}</p>
+          {trendData && trendData.length > 0 && (
+            <div className="mb-1">
+              <Sparkline data={trendData} width={60} height={20} />
+            </div>
+          )}
+        </div>
         {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>}
       </div>
     );
@@ -211,6 +244,7 @@ export default function SalesPage() {
           icon={Euro}
           color="green"
           delay={0}
+          trendData={revenueTrend}
         />
         <MetricCard
           title="Total Orders"
@@ -219,6 +253,7 @@ export default function SalesPage() {
           icon={ShoppingCart}
           color="blue"
           delay={100}
+          trendData={ordersTrend}
         />
         <MetricCard
           title="Average Order"
@@ -234,6 +269,7 @@ export default function SalesPage() {
           subtitle={`${formatNumber(salesData.avgItemsPerOrder)} items/order`}
           color="orange"
           delay={300}
+          trendData={itemsSoldTrend}
         />
         <MetricCard
           title="Total Tax"
@@ -280,8 +316,25 @@ export default function SalesPage() {
                 </button>
               </div>
             </div>
-            <SalesChart data={salesData.salesByDate} type={chartType} />
+            <SalesChart data={salesData.salesByDate} type={chartType} currency={currency} />
           </div>
+
+          {/* Gross vs Net Revenue Comparison - NEW! */}
+          {salesData.revenueByDay && salesData.revenueByDay.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-green-600" />
+                Gross vs Net Revenue
+              </h3>
+              <ComparisonChart
+                currentData={salesData.revenueByDay.map((d) => ({ date: d.date, value: d.gross }))}
+                previousData={salesData.revenueByDay.map((d) => ({ date: d.date, value: d.net }))}
+                currentLabel="Gross Revenue"
+                previousLabel="Net Revenue"
+                valueFormatter={(value) => formatCurrency(value, currency)}
+              />
+            </div>
+          )}
 
           {/* Top Products */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
@@ -313,6 +366,7 @@ export default function SalesPage() {
             <ProductSalesChart
               data={salesData.topProducts.slice(0, 10)}
               metric={productMetric}
+              currency={currency}
             />
           </div>
         </>
@@ -320,6 +374,32 @@ export default function SalesPage() {
 
       {activeView === "breakdown" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Sales by Category - NEW! */}
+          {salesData.salesByCategory && salesData.salesByCategory.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-purple-600" />
+                Sales by Category
+              </h3>
+              <DoughnutChart
+                labels={salesData.salesByCategory.map((cat) => cat.category)}
+                data={salesData.salesByCategory.map((cat) => cat.total)}
+                title=""
+              />
+              <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
+                {salesData.salesByCategory.map((cat, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{cat.category}</span>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(cat.total, currency)}</div>
+                      <div className="text-xs text-gray-500">{cat.quantity} items</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Payment Methods */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Payment Methods</h3>
@@ -340,6 +420,32 @@ export default function SalesPage() {
               ))}
             </div>
           </div>
+
+          {/* Traffic Sources - NEW! */}
+          {data.customerData?.adsAttribution && data.customerData.adsAttribution.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-blue-600" />
+                Traffic Sources & Attribution
+              </h3>
+              <DoughnutChart
+                labels={data.customerData.adsAttribution.map((attr) => attr.source)}
+                data={data.customerData.adsAttribution.map((attr) => attr.revenue)}
+                title=""
+              />
+              <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
+                {data.customerData.adsAttribution.map((attr, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{attr.source}</span>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(attr.revenue, currency)}</div>
+                      <div className="text-xs text-gray-500">{attr.count} orders</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Sales by Country */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
@@ -390,28 +496,108 @@ export default function SalesPage() {
       )}
 
       {activeView === "trends" && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Hourly Sales Distribution</h3>
-          <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
-            {salesData.hourlyDistribution.map((hour) => {
-              const maxRevenue = Math.max(...salesData.hourlyDistribution.map(h => h.revenue));
-              const heightPercentage = maxRevenue > 0 ? (hour.revenue / maxRevenue) * 100 : 0;
-              return (
-                <div key={hour.hour} className="flex flex-col items-center group">
-                  <div className="relative w-full h-32 flex items-end">
-                    <div
-                      className="w-full bg-gradient-to-t from-purple-500 to-purple-400 rounded-t-md transition-all duration-300 group-hover:from-purple-600 group-hover:to-purple-500 cursor-pointer"
-                      style={{ height: `${heightPercentage}%` }}
-                      title={`${hour.orders} orders - ${formatCurrency(hour.revenue, currency)}`}
-                    />
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-medium">{hour.hour}h</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500">{hour.orders}</div>
-                </div>
-              );
-            })}
+        <>
+          {/* Monthly Product Sales Trends - NEW! */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-purple-600" />
+              Monthly Sales by Top Products
+            </h3>
+            <ProductTrendChart
+              salesByProduct={salesData.salesByProduct}
+              salesByDate={salesData.salesByDate}
+              valueFormatter={(value) => formatCurrency(value, currency)}
+              topN={5}
+            />
           </div>
-        </div>
+
+          {/* Product Velocity Analytics - NEW! */}
+          {data.productVelocity && data.productVelocity.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <Package className="w-5 h-5 text-orange-600" />
+                Product Velocity Analytics
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-700">
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Product</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Total Sales</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Avg/Day</th>
+                      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Trend</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Days to Sellout</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.productVelocity.slice(0, 10).map((product, i) => (
+                      <tr key={i} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                        <td className="py-3 px-4 text-sm font-medium text-gray-900 dark:text-white">{product.name}</td>
+                        <td className="py-3 px-4 text-sm text-right font-semibold text-gray-900 dark:text-white">{product.totalSales}</td>
+                        <td className="py-3 px-4 text-sm text-right text-gray-600 dark:text-gray-400">{product.avgDailySales.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            product.trend === "increasing"
+                              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                              : product.trend === "decreasing"
+                              ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                              : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-400"
+                          }`}>
+                            {product.trend === "increasing" ? (
+                              <TrendingUp className="w-3 h-3" />
+                            ) : product.trend === "decreasing" ? (
+                              <TrendingDown className="w-3 h-3" />
+                            ) : null}
+                            {product.trend}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-right">
+                          {product.daysToSellOut !== null ? (
+                            <span className={`font-semibold ${
+                              product.daysToSellOut < 7
+                                ? "text-red-600 dark:text-red-400"
+                                : product.daysToSellOut < 30
+                                ? "text-orange-600 dark:text-orange-400"
+                                : "text-green-600 dark:text-green-400"
+                            }`}>
+                              {product.daysToSellOut} days
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 dark:text-gray-500">N/A</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Hourly Sales Distribution */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Hourly Sales Distribution</h3>
+            <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
+              {salesData.hourlyDistribution.map((hour) => {
+                const maxRevenue = Math.max(...salesData.hourlyDistribution.map(h => h.revenue));
+                const heightPercentage = maxRevenue > 0 ? (hour.revenue / maxRevenue) * 100 : 0;
+                return (
+                  <div key={hour.hour} className="flex flex-col items-center group">
+                    <div className="relative w-full h-32 flex items-end">
+                      <div
+                        className="w-full bg-gradient-to-t from-purple-500 to-purple-400 rounded-t-md transition-all duration-300 group-hover:from-purple-600 group-hover:to-purple-500 cursor-pointer"
+                        style={{ height: `${heightPercentage}%` }}
+                        title={`${hour.orders} orders - ${formatCurrency(hour.revenue, currency)}`}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-medium">{hour.hour}h</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">{hour.orders}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

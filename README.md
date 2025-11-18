@@ -187,4 +187,3 @@ npm start
 ## License
 
 MIT
-# freeanalyticstest

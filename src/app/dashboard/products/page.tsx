@@ -1,35 +1,45 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, Search, Package, TrendingUp, DollarSign, AlertTriangle, BarChart3, Tag, Eye, EyeOff, Star } from "lucide-react";
-import { WooProduct } from "@/types";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { RefreshCw, Search, Package, TrendingUp, DollarSign, AlertTriangle, BarChart3, Tag, Eye, EyeOff, Star, LineChart } from "lucide-react";
+import { WooProduct, WooOrder } from "@/types";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { DashboardSkeleton } from "@/components/Skeleton";
 import DoughnutChart from "@/components/charts/DoughnutChart";
 import ProductSalesChart from "@/components/charts/ProductSalesChart";
+import EmptyState from "@/components/EmptyState";
+import ProductDetailModal from "@/components/ProductDetailModal";
+import ProductSalesTrendChart from "@/components/charts/ProductSalesTrendChart";
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<WooProduct[]>([]);
+  const [orders, setOrders] = useState<WooOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<"sales" | "price" | "stock" | "date">("sales");
   const [filterStock, setFilterStock] = useState<"all" | "instock" | "outofstock" | "lowstock">("all");
   const [currency, setCurrency] = useState("EUR");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [selectedProduct, setSelectedProduct] = useState<WooProduct | null>(null);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const [productsRes, analyticsRes] = await Promise.all([
+      const [productsRes, analyticsRes, ordersRes] = await Promise.all([
         fetch("/api/woocommerce/products"),
         fetch("/api/woocommerce/analytics?days=30"),
+        fetch("/api/woocommerce/orders?days=30"),
       ]);
       const productsData = await productsRes.json();
       const analyticsData = await analyticsRes.json();
+      const ordersData = await ordersRes.json();
 
       // Handle new standardized API response format
       const productsArray = productsData.success ? productsData.data.products : productsData.products || [];
+      const ordersArray = ordersData.success ? ordersData.data.orders : ordersData.orders || [];
+
       setProducts(productsArray);
+      setOrders(ordersArray);
 
       const currencyValue = analyticsData.success ? analyticsData.data.currency : analyticsData.currency;
       if (currencyValue) setCurrency(currencyValue);
@@ -43,6 +53,45 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
+
+  // Calculate daily sales per product from orders
+  const productDailySales = useMemo(() => {
+    const salesMap: Record<number, Record<string, { total: number; quantity: number }>> = {};
+
+    orders.forEach((order) => {
+      const orderDate = new Date(order.date_created).toISOString().split('T')[0];
+
+      order.line_items?.forEach((item) => {
+        if (!item.product_id) return;
+
+        if (!salesMap[item.product_id]) {
+          salesMap[item.product_id] = {};
+        }
+
+        if (!salesMap[item.product_id][orderDate]) {
+          salesMap[item.product_id][orderDate] = { total: 0, quantity: 0 };
+        }
+
+        salesMap[item.product_id][orderDate].total += parseFloat(item.total || "0");
+        salesMap[item.product_id][orderDate].quantity += item.quantity;
+      });
+    });
+
+    // Convert to array format
+    const result: Record<number, Array<{ date: string; total: number; quantity: number }>> = {};
+
+    Object.entries(salesMap).forEach(([productId, dates]) => {
+      result[parseInt(productId)] = Object.entries(dates)
+        .map(([date, sales]) => ({
+          date,
+          total: sales.total,
+          quantity: sales.quantity,
+        }))
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    });
+
+    return result;
+  }, [orders]);
 
   const filteredProducts = products
     .filter((product) => {
@@ -113,7 +162,39 @@ export default function ProductsPage() {
     );
   };
 
+  const clearFilters = () => {
+    setSearchTerm("");
+    setFilterStock("all");
+  };
+
   if (loading && products.length === 0) return <DashboardSkeleton />;
+
+  // No products at all
+  if (!loading && products.length === 0) {
+    return (
+      <div className="animate-fadeIn">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <Package className="w-7 h-7 text-purple-600" />
+              Products
+            </h1>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8">
+          <EmptyState
+            icon={Package}
+            title="No products found"
+            description="You don't have any products in your store yet. Start by adding products to your WooCommerce store."
+            action={{
+              label: "Refresh Data",
+              onClick: fetchProducts,
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fadeIn">
@@ -273,7 +354,7 @@ export default function ProductsPage() {
       {topProductsData.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 mb-8">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Top 10 Products by Revenue</h3>
-          <ProductSalesChart data={topProductsData} metric="sales" />
+          <ProductSalesChart data={topProductsData} metric="sales" currency={currency} />
         </div>
       )}
 
@@ -324,8 +405,9 @@ export default function ProductsPage() {
             filteredProducts.slice(0, 24).map((product, idx) => (
               <div
                 key={product.id}
-                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-xl transition-all duration-300 animate-slideUp group"
+                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-xl transition-all duration-300 animate-slideUp group cursor-pointer"
                 style={{ animationDelay: `${idx * 50}ms` }}
+                onClick={() => setSelectedProduct(product)}
               >
                 <div className="aspect-square bg-gray-100 dark:bg-gray-700 relative overflow-hidden">
                   {product.images && product.images.length > 0 ? (
@@ -368,11 +450,33 @@ export default function ProductsPage() {
                       ))}
                     </div>
                   )}
+                  {productDailySales[product.id] && productDailySales[product.id].length > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedProduct(product);
+                      }}
+                      className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-all group-hover:shadow-md"
+                    >
+                      <LineChart className="w-4 h-4" />
+                      View Sales Trend
+                    </button>
+                  )}
                 </div>
               </div>
             ))
           ) : (
-            <div className="col-span-full text-center py-12 text-gray-500">No products found</div>
+            <div className="col-span-full">
+              <EmptyState
+                icon={Search}
+                title="No products match your filters"
+                description="Try adjusting your search terms or filters to find what you're looking for."
+                action={{
+                  label: "Clear Filters",
+                  onClick: clearFilters,
+                }}
+              />
+            </div>
           )}
         </div>
       ) : (
@@ -391,7 +495,12 @@ export default function ProductsPage() {
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredProducts.slice(0, 50).map((product, idx) => (
-                  <tr key={product.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 animate-slideUp" style={{ animationDelay: `${idx * 20}ms` }}>
+                  <tr
+                    key={product.id}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700/30 animate-slideUp cursor-pointer"
+                    style={{ animationDelay: `${idx * 20}ms` }}
+                    onClick={() => setSelectedProduct(product)}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         {product.images && product.images.length > 0 ? (
@@ -421,6 +530,17 @@ export default function ProductsPage() {
         <div className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
           Showing {viewMode === "grid" ? 24 : 50} of {filteredProducts.length} products
         </div>
+      )}
+
+      {/* Product Detail Modal */}
+      {selectedProduct && (
+        <ProductDetailModal
+          isOpen={!!selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+          product={selectedProduct}
+          dailySales={productDailySales[selectedProduct.id] || []}
+          currency={currency}
+        />
       )}
     </div>
   );
