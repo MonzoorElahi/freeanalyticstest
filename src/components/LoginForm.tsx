@@ -130,12 +130,8 @@ export default function LoginForm() {
       <div className="w-full max-w-md animate-bounce-in">
         <div className="glass-strong rounded-2xl shadow-2xl p-8">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white shadow-lg mb-4 p-3 animate-float">
-              <img
-                src="https://ci3.googleusercontent.com/meips/ADKq_NaE_oWXdD1JtInFmEcyVBj_2iUGqAxLkH0Puq4Ekzxkyax7RMFeP15ETdyAMHq5uOOPBgLceV0_auWlExOTyX-lgGdqQeIVkItlVKEtBkvGtzmTPczB_vJ5ZmQyow=s0-d-e1-ft#https://media.marka-img.com/2496c9ee/xtzZUEqs8oyai7SQP486DHaNA4VbUp.png"
-                alt="Logo"
-                className="w-full h-full object-contain"
-              />
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl gradient-primary shadow-xl mb-4 p-4 animate-float">
+              <Store className="w-full h-full text-white" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
               WooCommerce Analytics
@@ -285,8 +281,8 @@ export default function LoginForm() {
           </div>
         </div>
 
-        <p className="text-center text-sm text-white/80 mt-6 font-medium">
-          Powered by WooCommerce REST API
+        <p className="text-center text-sm text-gray-700 dark:text-gray-300 mt-6 font-medium">
+          Made by Monzoor
         </p>
       </div>
     </div>

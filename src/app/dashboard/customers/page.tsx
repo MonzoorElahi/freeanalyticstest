@@ -178,8 +178,10 @@ export default function CustomersPage() {
           icon={Users}
           title="Failed to load customers"
           description={error}
-          actionLabel="Try Again"
-          onAction={fetchCustomers}
+          action={{
+            label: "Try Again",
+            onClick: fetchCustomers
+          }}
         />
       </div>
     );

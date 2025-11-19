@@ -24,6 +24,9 @@ import {
   Target,
   Calendar,
   Filter,
+  X,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { formatCurrency, formatNumber, formatPercentage, formatDateRange } from "@/lib/formatters";
 import SalesChart from "./charts/SalesChart";
@@ -31,6 +34,7 @@ import ProductSalesChart from "./charts/ProductSalesChart";
 import CustomerChart from "./charts/CustomerChart";
 import DoughnutChart from "./charts/DoughnutChart";
 import ProfitLossChart from "./charts/ProfitLossChart";
+import MultiLineChart from "./charts/MultiLineChart";
 import ExportButton from "./ExportButton";
 import ComparisonChart from "./charts/ComparisonChart";
 import GoalIndicator from "./GoalIndicator";
@@ -170,6 +174,8 @@ export default function DashboardContent() {
   const [activeTab, setActiveTab] = useState<"overview" | "sales" | "customers">("overview");
   const [lastUpdated, setLastUpdated] = useState<Date | undefined>();
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [excludedProducts, setExcludedProducts] = useState<Set<string>>(new Set());
+  const [showProductFilter, setShowProductFilter] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -567,7 +573,7 @@ export default function DashboardContent() {
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg p-4 flex items-center justify-center">
               <button
-                onClick={() => window.location.href = '/dashboard/settings'}
+                onClick={() => window.location.href = '/dashboard/expenses'}
                 className="text-sm text-purple-600 dark:text-purple-400 hover:underline font-medium"
               >
                 Manage Expenses →
@@ -740,11 +746,74 @@ export default function DashboardContent() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Top Products */}
             <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Top Products by Revenue
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Top Products by Revenue
+                </h3>
+                <button
+                  onClick={() => setShowProductFilter(!showProductFilter)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+                >
+                  <Filter className="w-4 h-4" />
+                  Filter ({excludedProducts.size} hidden)
+                </button>
+              </div>
+
+              {showProductFilter && salesData.topProducts.length > 0 && (
+                <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Select products to hide:
+                    </p>
+                    {excludedProducts.size > 0 && (
+                      <button
+                        onClick={() => setExcludedProducts(new Set())}
+                        className="text-xs text-purple-600 dark:text-purple-400 hover:underline"
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {salesData.topProducts.map((product) => (
+                      <label
+                        key={product.name}
+                        className="flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-600/30 rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={excludedProducts.has(product.name)}
+                          onChange={(e) => {
+                            const newSet = new Set(excludedProducts);
+                            if (e.target.checked) {
+                              newSet.add(product.name);
+                            } else {
+                              newSet.delete(product.name);
+                            }
+                            setExcludedProducts(newSet);
+                          }}
+                          className="w-4 h-4 accent-purple-600"
+                        />
+                        <div className="flex-1 flex items-center justify-between">
+                          <span className="text-sm text-gray-700 dark:text-gray-300">
+                            {product.name}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {formatCurrency(product.sales, currency)}
+                          </span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {salesData.topProducts.length > 0 ? (
-                <ProductSalesChart data={salesData.topProducts} metric="sales" currency={currency} />
+                <ProductSalesChart
+                  data={salesData.topProducts.filter(p => !excludedProducts.has(p.name))}
+                  metric="sales"
+                  currency={currency}
+                />
               ) : (
                 <div className="h-96 flex items-center justify-center text-gray-500">
                   No product data
@@ -752,12 +821,12 @@ export default function DashboardContent() {
               )}
             </div>
 
-            {/* Order Attribution */}
+            {/* Order Attribution Summary */}
             <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
               <div className="flex items-center gap-2 mb-4">
                 <Megaphone className="w-5 h-5 text-purple-600" />
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Order Attribution
+                  Order Attribution Summary
                 </h3>
               </div>
               {customerData.adsAttribution.length > 0 ? (
@@ -794,6 +863,71 @@ export default function DashboardContent() {
             </div>
           </div>
 
+          {/* Attribution Trends Over Time */}
+          {customerData.adsAttribution.length > 0 && salesData.revenueByDay.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2 mb-4">
+                <TrendingUp className="w-5 h-5 text-purple-600" />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Orders by Source Over Time
+                </h3>
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                  (Distributed proportion estimate)
+                </span>
+              </div>
+              {(() => {
+                try {
+                  // Generate time series data for each source based on proportions
+                  const sources = customerData.adsAttribution.filter(s => s.count > 0);
+                  if (sources.length === 0) {
+                    return (
+                      <div className="h-80 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                        No attribution data available
+                      </div>
+                    );
+                  }
+
+                  const totalOrders = sources.reduce((sum, s) => sum + s.count, 0);
+                  const dates = salesData.revenueByDay.map(d => d.date);
+
+                  const colors = [
+                    '#8B5CF6', // Purple (Direct)
+                    '#3B82F6', // Blue (Google)
+                    '#10B981', // Green (Facebook)
+                    '#F59E0B', // Orange (Instagram)
+                    '#EF4444', // Red (Referral)
+                    '#6366F1', // Indigo
+                    '#EC4899', // Pink
+                    '#14B8A6', // Teal
+                  ];
+
+                  const series = sources.map((source, idx) => {
+                    const proportion = totalOrders > 0 ? source.count / totalOrders : 0;
+                    return {
+                      label: source.source,
+                      data: salesData.revenueByDay.map(d => Math.round((d.orders || 0) * proportion)),
+                      color: colors[idx % colors.length],
+                    };
+                  });
+
+                  return (
+                    <MultiLineChart
+                      labels={dates.map(d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}
+                      series={series}
+                    />
+                  );
+                } catch (error) {
+                  console.error('Error rendering attribution chart:', error);
+                  return (
+                    <div className="h-80 flex items-center justify-center text-red-500">
+                      Error loading chart data
+                    </div>
+                  );
+                }
+              })()}
+            </div>
+          )}
+
           {/* New Customers */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
@@ -807,6 +941,89 @@ export default function DashboardContent() {
               </div>
             )}
           </div>
+
+          {/* New Customers by Source Over Time */}
+          {customerData.adsAttribution.length > 0 && customerData.customersByDate.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2 mb-4">
+                <UserPlus className="w-5 h-5 text-purple-600" />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  New Customers by Source Over Time
+                </h3>
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                  (Distributed proportion estimate)
+                </span>
+              </div>
+              {(() => {
+                try {
+                  // Generate time series data for new customers by source
+                  const sources = customerData.adsAttribution.filter(s => s.count > 0);
+                  if (sources.length === 0 || customerData.newCustomers === 0) {
+                    return (
+                      <div className="h-80 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                        No customer attribution data available
+                      </div>
+                    );
+                  }
+
+                  const totalCustomers = sources.reduce((sum, s) => sum + s.count, 0);
+                  const dates = customerData.customersByDate.map(d => d.date);
+
+                  const colors = [
+                    '#8B5CF6', // Purple (Direct)
+                    '#3B82F6', // Blue (Google)
+                    '#10B981', // Green (Facebook)
+                    '#F59E0B', // Orange (Instagram)
+                    '#EF4444', // Red (Referral)
+                    '#6366F1', // Indigo
+                    '#EC4899', // Pink
+                    '#14B8A6', // Teal
+                  ];
+
+                  const series = sources.map((source, idx) => {
+                    const proportion = totalCustomers > 0 ? source.count / totalCustomers : 0;
+                    const estimatedTotal = Math.round(proportion * customerData.newCustomers);
+                    return {
+                      label: `${source.source} (est. ${estimatedTotal} total)`,
+                      data: customerData.customersByDate.map(d => Math.round((d.count || 0) * proportion)),
+                      color: colors[idx % colors.length],
+                    };
+                  });
+
+                  return (
+                    <div>
+                      <MultiLineChart
+                        labels={dates.map(d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}
+                        series={series}
+                      />
+                      <div className="mt-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {sources.map((source, idx) => {
+                          const proportion = totalCustomers > 0 ? source.count / totalCustomers : 0;
+                          const estimatedNewCustomers = Math.round(proportion * customerData.newCustomers);
+                          return (
+                            <div key={source.source} className="p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg border-l-4 transition-all hover:shadow-md" style={{ borderColor: colors[idx % colors.length] }}>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">{source.source}</p>
+                              <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{estimatedNewCustomers}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                {formatPercentage(proportion)} of new customers
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                } catch (error) {
+                  console.error('Error rendering customer attribution chart:', error);
+                  return (
+                    <div className="h-80 flex items-center justify-center text-red-500">
+                      Error loading chart data
+                    </div>
+                  );
+                }
+              })()}
+            </div>
+          )}
 
           {/* Revenue Forecast */}
           {data.revenueForecast && data.revenueForecast.length > 0 && (

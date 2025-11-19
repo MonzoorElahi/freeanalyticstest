@@ -473,7 +473,7 @@ export default function MailChimpPage() {
                   <div className="space-y-3">
                     {data.productSales.slice(0, 10).map((product, idx) => (
                       <div
-                        key={product.productId}
+                        key={`product-${product.productId}-${idx}`}
                         className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
                       >
                         <div className="flex items-center gap-3">
