@@ -56,7 +56,7 @@ export default function MailChimpInsights({ insights }: MailChimpInsightsProps) 
       <div className="flex items-center gap-2 mb-4">
         <Lightbulb className="w-5 h-5 text-purple-600" />
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Insights & Recommendations
+          AI-Powered Insights & Recommendations
         </h3>
       </div>
 

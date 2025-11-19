@@ -36,16 +36,16 @@ const toastIcons = {
 };
 
 const toastStyles = {
-  success: "bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800",
-  error: "bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800",
-  warning: "bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800",
-  info: "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800",
+  success: "state-success glass",
+  error: "state-error glass",
+  warning: "state-warning glass",
+  info: "state-info glass",
 };
 
 const iconStyles = {
   success: "text-green-600 dark:text-green-400",
   error: "text-red-600 dark:text-red-400",
-  warning: "text-yellow-600 dark:text-yellow-400",
+  warning: "text-amber-600 dark:text-amber-400",
   info: "text-blue-600 dark:text-blue-400",
 };
 
@@ -54,19 +54,21 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
 
   return (
     <div
-      className={`flex items-start gap-3 p-4 rounded-lg border shadow-lg animate-slideUp ${toastStyles[toast.type]}`}
+      className={`flex items-start gap-3 p-4 rounded-xl border-2 shadow-2xl animate-slide-in-right ${toastStyles[toast.type]}`}
       role="alert"
     >
-      <Icon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${iconStyles[toast.type]}`} />
+      <div className={`p-2 rounded-lg ${toast.type === 'success' ? 'bg-green-100 dark:bg-green-900/50' : toast.type === 'error' ? 'bg-red-100 dark:bg-red-900/50' : toast.type === 'warning' ? 'bg-amber-100 dark:bg-amber-900/50' : 'bg-blue-100 dark:bg-blue-900/50'}`}>
+        <Icon className={`w-5 h-5 flex-shrink-0 ${iconStyles[toast.type]} ${toast.type === 'success' ? 'animate-success' : ''}`} />
+      </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-900 dark:text-white">{toast.title}</p>
+        <p className="text-sm font-bold text-gray-900 dark:text-white">{toast.title}</p>
         {toast.message && (
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{toast.message}</p>
+          <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">{toast.message}</p>
         )}
       </div>
       <button
         onClick={onDismiss}
-        className="flex-shrink-0 p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+        className="btn-icon flex-shrink-0"
         aria-label="Dismiss notification"
       >
         <X className="w-4 h-4 text-gray-500 dark:text-gray-400" />

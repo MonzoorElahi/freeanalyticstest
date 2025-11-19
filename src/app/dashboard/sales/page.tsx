@@ -151,101 +151,118 @@ export default function SalesPage() {
 
     return (
       <div
-        className="group bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 hover:shadow-xl hover:border-purple-300 dark:hover:border-purple-700 transition-all duration-300 hover:scale-105 animate-slideUp cursor-pointer"
+        className="metric-card p-5 group card-elevated"
         style={{ animationDelay: `${delay}ms` }}
       >
         <div className="flex items-center justify-between mb-3">
-          <div className={`p-2.5 rounded-lg ${colorClasses[color]} group-hover:scale-110 transition-transform duration-300`}>
-            <Icon className="w-5 h-5" />
+          <div className={`p-3 rounded-xl ${colorClasses[color]} smooth-hover group-hover:scale-110 group-hover:rotate-6`}>
+            <Icon className="w-6 h-6" />
           </div>
           {change !== undefined && (
             <div
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold ${
                 isPositive
                   ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
                   : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-              }`}
+              } animate-bounce-in`}
             >
-              {isPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+              {isPositive ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
               {formatPercentage(change)}
             </div>
           )}
         </div>
-        <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">{title}</h3>
-        <div className="flex items-end justify-between gap-3 mb-1">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">{value}</p>
+        <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider">{title}</h3>
+        <div className="flex items-end justify-between gap-3 mb-2">
+          <p className="text-3xl font-bold text-gray-900 dark:text-white tabular-nums group-hover:text-gradient smooth-hover">{value}</p>
           {trendData && trendData.length > 0 && (
             <div className="mb-1">
-              <Sparkline data={trendData} width={60} height={20} />
+              <Sparkline data={trendData} width={70} height={24} />
             </div>
           )}
         </div>
-        {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>}
+        {subtitle && <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 font-medium">{subtitle}</p>}
+
+        {/* Progress indicator line */}
+        <div className="mt-4 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div
+            className={`h-full smooth-slow shadow-lg ${
+              isPositive
+                ? "gradient-success"
+                : "gradient-warning"
+            } group-hover:w-full transition-all`}
+            style={{ width: change !== undefined ? `${Math.min(Math.abs(change), 100)}%` : "50%" }}
+          />
+        </div>
       </div>
     );
   };
 
   return (
-    <div className="animate-fadeIn space-y-6">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-white" />
+    <div className="page-transition space-y-8">
+      {/* Header with Breadcrumbs */}
+      <div className="glass-strong p-6 rounded-2xl border-2 border-purple-200 dark:border-purple-700">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="animate-slide-in-left">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-3 gradient-primary rounded-xl shadow-lg animate-float">
+                <TrendingUp className="w-7 h-7 text-white" />
+              </div>
+              <h1 className="text-4xl font-bold text-gradient">
+                Sales Analytics
+              </h1>
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Sales Analytics
-            </h1>
+            <p className="text-gray-600 dark:text-gray-300 flex items-center gap-2 text-base font-medium">
+              <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              Comprehensive breakdown of your store&apos;s sales performance
+            </p>
           </div>
-          <p className="text-gray-600 dark:text-gray-400 flex items-center gap-2">
-            <Sparkles className="w-4 h-4" />
-            Comprehensive breakdown of your store&apos;s sales performance
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 shadow-sm hover:shadow-md transition-shadow">
-            <Calendar className="w-4 h-4 text-gray-500" />
-            <select
-              value={days}
-              onChange={(e) => setDays(parseInt(e.target.value))}
-              className="bg-transparent text-sm font-medium text-gray-900 dark:text-white focus:outline-none cursor-pointer"
+          <div className="flex items-center gap-3 animate-slide-in-right">
+            <div className="glass flex items-center gap-2 rounded-xl border-2 border-gray-200 dark:border-gray-600 px-4 py-2.5 shadow-lg">
+              <Calendar className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              <select
+                value={days}
+                onChange={(e) => setDays(parseInt(e.target.value))}
+                className="bg-transparent text-sm font-bold text-gray-900 dark:text-white focus:outline-none cursor-pointer focus-ring"
+              >
+                <option value={7}>Last 7 days</option>
+                <option value={14}>Last 14 days</option>
+                <option value={30}>Last 30 days</option>
+                <option value={60}>Last 60 days</option>
+                <option value={90}>Last 90 days</option>
+                <option value={365}>Last year</option>
+              </select>
+            </div>
+            <button
+              onClick={fetchData}
+              disabled={loading}
+              className="btn-primary flex items-center gap-2"
             >
-              <option value={7}>Last 7 days</option>
-              <option value={14}>Last 14 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={60}>Last 60 days</option>
-              <option value={90}>Last 90 days</option>
-              <option value={365}>Last year</option>
-            </select>
+              <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
           </div>
-          <button
-            onClick={fetchData}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 disabled:opacity-50 transition-all hover:shadow-lg active:scale-95"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
         </div>
       </div>
 
-      {/* View Tabs */}
-      <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg w-fit">
-        {["overview", "breakdown", "trends"].map((view) => (
+      {/* View Tabs with improved design */}
+      <div className="flex gap-2 p-2 glass rounded-xl w-fit border-2 border-gray-200 dark:border-gray-700">
+        {["overview", "breakdown", "trends"].map((view, index) => (
           <button
             key={view}
             onClick={() => setActiveView(view as typeof activeView)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`px-6 py-3 rounded-lg text-sm font-bold smooth-fast ${
               activeView === view
-                ? "bg-white dark:bg-gray-700 text-purple-600 dark:text-purple-400 shadow-sm"
-                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                ? "gradient-primary text-white shadow-lg scale-105"
+                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-95"
             }`}
+            style={{ animationDelay: `${index * 50}ms` }}
           >
             {view.charAt(0).toUpperCase() + view.slice(1)}
           </button>
         ))}
       </div>
+
+      <div className="divider-gradient" />
 
       {/* Primary Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

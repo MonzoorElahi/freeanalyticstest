@@ -18,11 +18,18 @@ import {
   BarChart3,
   FileText,
   RefreshCw,
+  CreditCard,
+  Building2,
+  Target,
+  PieChart,
 } from "lucide-react";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
-import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { format, subMonths, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import ExpenseByCategoryChart from "@/components/charts/ExpenseByCategoryChart";
 import ExpensesTrendChart from "@/components/charts/ExpensesTrendChart";
+import PaymentMethodChart from "@/components/charts/PaymentMethodChart";
+import VendorAnalyticsChart from "@/components/charts/VendorAnalyticsChart";
+import BudgetTrackingChart from "@/components/charts/BudgetTrackingChart";
 import type { Expense, ExpenseCategory, ExpenseAnalytics, ExpenseFilter } from "@/types";
 
 type TabType = "overview" | "expenses" | "analytics";
@@ -38,6 +45,9 @@ export default function ExpensesPage() {
   const [selectedExpenses, setSelectedExpenses] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<ExpenseFilter>({});
+  const [monthlyBudget, setMonthlyBudget] = useState<number>(10000); // Default budget
+  const [paymentMethodData, setPaymentMethodData] = useState<any[]>([]);
+  const [vendorData, setVendorData] = useState<any[]>([]);
   const currency = "EUR";
 
   // Form state
@@ -193,6 +203,51 @@ export default function ExpensesPage() {
     const previousTotal = previousMonthExpenses.reduce((sum, exp) => sum + exp.amount, 0);
     const change = currentTotal - previousTotal;
     const percentageChange = previousTotal > 0 ? (change / previousTotal) * 100 : 0;
+
+    // Payment method analytics
+    const paymentMethodMap = new Map<string, { total: number; count: number }>();
+    filteredExpenses.forEach((exp) => {
+      const method = exp.paymentMethod || "Other";
+      const existing = paymentMethodMap.get(method) || { total: 0, count: 0 };
+      paymentMethodMap.set(method, {
+        total: existing.total + exp.amount,
+        count: existing.count + 1,
+      });
+    });
+
+    const paymentMethods = Array.from(paymentMethodMap.entries())
+      .map(([method, data]) => ({
+        method,
+        total: data.total,
+        count: data.count,
+        percentage: (data.total / totalExpenses) * 100,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    setPaymentMethodData(paymentMethods);
+
+    // Vendor analytics
+    const vendorMap = new Map<string, { total: number; count: number }>();
+    filteredExpenses.forEach((exp) => {
+      if (exp.vendor) {
+        const existing = vendorMap.get(exp.vendor) || { total: 0, count: 0 };
+        vendorMap.set(exp.vendor, {
+          total: existing.total + exp.amount,
+          count: existing.count + 1,
+        });
+      }
+    });
+
+    const vendors = Array.from(vendorMap.entries())
+      .map(([vendor, data]) => ({
+        vendor,
+        total: data.total,
+        count: data.count,
+        avgTransaction: data.total / data.count,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    setVendorData(vendors);
 
     setAnalytics({
       totalExpenses,
@@ -764,12 +819,134 @@ export default function ExpensesPage() {
       {/* Analytics Tab */}
       {activeTab === "analytics" && analytics && (
         <div className="space-y-6">
-          {/* Add more detailed analytics here if needed */}
+          {/* Budget Tracking */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Detailed Analytics Coming Soon
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Target className="w-5 h-5 text-purple-600" />
+                Monthly Budget Tracker
+              </h3>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={monthlyBudget}
+                  onChange={(e) => setMonthlyBudget(parseFloat(e.target.value) || 0)}
+                  className="w-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white text-sm"
+                  placeholder="Budget"
+                />
+                <span className="text-sm text-gray-500 dark:text-gray-400">{currency}</span>
+              </div>
+            </div>
+            <BudgetTrackingChart
+              budget={monthlyBudget}
+              spent={analytics.expenseTrend.current}
+              currency={currency}
+            />
+          </div>
+
+          {/* Charts Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Payment Method Breakdown */}
+            {paymentMethodData.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-blue-600" />
+                  Payment Method Breakdown
+                </h3>
+                <PaymentMethodChart data={paymentMethodData} currency={currency} />
+              </div>
+            )}
+
+            {/* Recurring Expenses */}
+            {analytics.recurringExpenses.count > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-green-600" />
+                  Recurring Expenses
+                </h3>
+                <div className="space-y-4">
+                  <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                    <p className="text-sm font-medium text-green-700 dark:text-green-300 mb-2">
+                      Total Recurring Expenses
+                    </p>
+                    <p className="text-3xl font-bold text-green-900 dark:text-green-100">
+                      {formatCurrency(analytics.recurringExpenses.total, currency)}
+                    </p>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                      {analytics.recurringExpenses.count} recurring expense{analytics.recurringExpenses.count !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      By Interval
+                    </h4>
+                    {analytics.recurringExpenses.byInterval.map((interval) => (
+                      <div
+                        key={interval.interval}
+                        className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white capitalize">
+                            {interval.interval}
+                          </p>
+                          <p className="text-xs text-gray-500">{interval.count} expense{interval.count !== 1 ? "s" : ""}</p>
+                        </div>
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">
+                          {formatCurrency(interval.total, currency)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Vendor Analytics */}
+          {vendorData.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-orange-600" />
+                Vendor Spending Analysis
+              </h3>
+              <VendorAnalyticsChart data={vendorData} currency={currency} />
+            </div>
+          )}
+
+          {/* Expense Forecasting */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <PieChart className="w-5 h-5 text-purple-600" />
+              3-Month Forecast
             </h3>
-            <p className="text-gray-500">More advanced analytics features will be added here.</p>
+            <div className="grid grid-cols-3 gap-4">
+              {[1, 2, 3].map((month) => {
+                const forecastDate = addMonths(new Date(), month);
+                const avgMonthlyExpense = analytics.monthlyAverage;
+                const forecastAmount = avgMonthlyExpense * (1 + (analytics.expenseTrend.percentageChange / 100));
+
+                return (
+                  <div
+                    key={month}
+                    className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800"
+                  >
+                    <p className="text-xs text-purple-700 dark:text-purple-300 mb-2">
+                      {format(forecastDate, "MMM yyyy")}
+                    </p>
+                    <p className="text-xl font-bold text-purple-900 dark:text-purple-100">
+                      {formatCurrency(forecastAmount, currency)}
+                    </p>
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                      Projected expense
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-4 text-center">
+              📊 Forecast based on historical average and current trend ({analytics.expenseTrend.percentageChange >= 0 ? "+" : ""}{analytics.expenseTrend.percentageChange.toFixed(1)}%)
+            </p>
           </div>
         </div>
       )}

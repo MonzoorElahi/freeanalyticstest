@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Mail, DollarSign, Users, Calendar, Target, Package, ShoppingCart, Eye, Settings, BarChart3, Globe, Monitor, Award, RefreshCw } from "lucide-react";
-import { formatDateRange } from "@/lib/formatters";
+import { Mail, DollarSign, Users, Calendar, Target, Package, ShoppingCart, Eye, Settings, BarChart3, Globe, Monitor, Award, RefreshCw, Download, Clock, FileText } from "lucide-react";
+import { formatDateRange, formatCurrency } from "@/lib/formatters";
+import { format } from "date-fns";
 import MailChimpRevenueChart from "@/components/charts/MailChimpRevenueChart";
 import MailChimpEbookChart from "@/components/charts/MailChimpEbookChart";
 import MailChimpMetrics from "@/components/MailChimpMetrics";
@@ -15,7 +16,10 @@ import DeviceStatsChart from "@/components/charts/DeviceStatsChart";
 import LocationStatsChart from "@/components/charts/LocationStatsChart";
 import EmailHealthScoreCard from "@/components/EmailHealthScoreCard";
 import CampaignScoresTable from "@/components/CampaignScoresTable";
-import type { MailChimpAnalytics } from "@/types";
+import TimeOfDayChart from "@/components/charts/TimeOfDayChart";
+import SubjectLineAnalysisChart from "@/components/charts/SubjectLineAnalysisChart";
+import CampaignDetailModal from "@/components/CampaignDetailModal";
+import type { MailChimpAnalytics, MailChimpCampaign, MailChimpReport } from "@/types";
 
 type TabType = "overview" | "analytics" | "audience" | "campaigns";
 
@@ -29,6 +33,8 @@ export default function MailChimpPage() {
   const [mailchimpMetric, setMailchimpMetric] = useState<"revenue" | "orders">("revenue");
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [selectedCampaign, setSelectedCampaign] = useState<{ campaign: MailChimpCampaign; report: MailChimpReport } | null>(null);
+  const [showCampaignModal, setShowCampaignModal] = useState(false);
   const currency = "EUR";
 
   // Check if API key is stored
@@ -93,6 +99,49 @@ export default function MailChimpPage() {
     setIsConfigured(false);
     setShowApiKeyInput(true);
     setData(null);
+  };
+
+  const handleExport = () => {
+    if (!data) return;
+
+    const exportData = {
+      exportDate: new Date().toISOString(),
+      dateRange: dateRange,
+      totalMetrics: data.totalMetrics,
+      campaigns: data.campaignScores?.map((c) => ({
+        title: c.campaignTitle,
+        overallScore: c.overallScore,
+        openRateScore: c.openRateScore,
+        clickRateScore: c.clickRateScore,
+        conversionScore: c.conversionScore,
+      })),
+      emailHealthScore: data.emailHealthScore,
+    };
+
+    const csv = [
+      ["MailChimp Analytics Export"],
+      [`Export Date: ${new Date().toLocaleString()}`],
+      [],
+      ["Total Metrics"],
+      ["Metric", "Value"],
+      ["Total Revenue", formatCurrency(data.totalMetrics.totalRevenue, currency)],
+      ["Total Orders", data.totalMetrics.totalOrders.toString()],
+      ["Emails Sent", data.totalMetrics.totalEmailsSent.toString()],
+      ["Avg Open Rate", `${(data.totalMetrics.avgOpenRate * 100).toFixed(2)}%`],
+      ["Avg Click Rate", `${(data.totalMetrics.avgClickRate * 100).toFixed(2)}%`],
+      ["Bounce Rate", `${(data.totalMetrics.avgBounceRate * 100).toFixed(2)}%`],
+      ["Conversion Rate", `${(data.totalMetrics.conversionRate * 100).toFixed(2)}%`],
+    ]
+      .map((row) => row.join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mailchimp-analytics-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const dateOptions = [
@@ -203,6 +252,15 @@ export default function MailChimpPage() {
                 </option>
               ))}
             </select>
+
+            <button
+              onClick={handleExport}
+              disabled={!data}
+              className="flex items-center gap-2 px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-sm font-medium hover:bg-white/30 backdrop-blur-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </button>
 
             <button
               onClick={fetchData}
@@ -324,6 +382,28 @@ export default function MailChimpPage() {
           {/* Analytics Tab */}
           {activeTab === "analytics" && (
             <div className="space-y-6">
+              {/* Time of Day Optimization */}
+              {data.timeOfDayStats && data.timeOfDayStats.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-purple-600" />
+                    Optimal Send Time Analysis
+                  </h3>
+                  <TimeOfDayChart data={data.timeOfDayStats} />
+                </div>
+              )}
+
+              {/* Subject Line Analysis */}
+              {data.subjectLineAnalysis && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                    Subject Line Performance
+                  </h3>
+                  <SubjectLineAnalysisChart data={data.subjectLineAnalysis} />
+                </div>
+              )}
+
               {/* Subscriber Growth */}
               {data.subscriberGrowth && data.subscriberGrowth.length > 0 && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
@@ -467,11 +547,28 @@ export default function MailChimpPage() {
                     Campaign Performance Scores
                   </h3>
                   <CampaignScoresTable scores={data.campaignScores} />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-4 text-center">
+                    💡 Tip: View detailed campaign analytics in the campaigns list from your MailChimp dashboard
+                  </p>
                 </div>
               )}
             </div>
           )}
         </>
+      )}
+
+      {/* Campaign Detail Modal */}
+      {selectedCampaign && (
+        <CampaignDetailModal
+          isOpen={showCampaignModal}
+          onClose={() => {
+            setShowCampaignModal(false);
+            setSelectedCampaign(null);
+          }}
+          campaign={selectedCampaign.campaign}
+          report={selectedCampaign.report}
+          currency={currency}
+        />
       )}
     </div>
   );
