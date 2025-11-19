@@ -74,7 +74,7 @@ export default function SmartInsights({
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            AI-powered recommendations based on your data
+            Recommendations based on your data
           </p>
         </div>
       </div>
